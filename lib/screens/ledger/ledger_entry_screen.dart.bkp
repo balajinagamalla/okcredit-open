@@ -1,0 +1,127 @@
+import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:okcredit_app/models/customer.dart';
+
+class LedgerEntryScreen extends StatefulWidget {
+  @override
+  _LedgerEntryScreenState createState() => _LedgerEntryScreenState();
+}
+
+class _LedgerEntryScreenState extends State<LedgerEntryScreen> {
+  final Box<Customer> _customerBox = Hive.box<Customer>('customers');
+
+  final _nameController = TextEditingController();
+  final _amountController = TextEditingController();
+  final _noteController = TextEditingController();
+
+  void _showAddEntryModal({Customer? customer, bool isCredit = true}) {
+    _amountController.clear();
+    _noteController.clear();
+
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (customer == null)
+              TextField(
+                controller: _nameController,
+                decoration: InputDecoration(labelText: 'Customer Name'),
+              ),
+            TextField(
+              controller: _amountController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: 'Amount'),
+            ),
+            TextField(
+              controller: _noteController,
+              decoration: InputDecoration(labelText: 'Note'),
+            ),
+            ElevatedButton(
+              child: Text('Save Entry'),
+              onPressed: () {
+                final amount = double.tryParse(_amountController.text) ?? 0.0;
+                final name = customer?.name ?? _nameController.text.trim();
+
+                if (name.isEmpty || amount <= 0) return;
+
+                if (customer != null) {
+                  customer.balance += isCredit ? amount : -amount;
+                  customer.save();
+                } else {
+                  final newCustomer = Customer(
+                    name: name,
+                    balance: isCredit ? amount : -amount,
+                  );
+                  _customerBox.add(newCustomer);
+                }
+
+                Navigator.pop(context);
+                setState(() {});
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _deleteCustomer(Customer customer) {
+    customer.delete();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Ledger')),
+      body: ValueListenableBuilder(
+        valueListenable: _customerBox.listenable(),
+        builder: (context, Box<Customer> box, _) {
+          final customers = box.values.toList();
+
+          if (customers.isEmpty) {
+            return Center(child: Text('No customers yet.'));
+          }
+
+          return ListView.builder(
+            itemCount: customers.length,
+            itemBuilder: (ctx, index) {
+              final customer = customers[index];
+              return ListTile(
+                title: Text(customer.name),
+                subtitle: Text('Balance: ₹${customer.balance.toStringAsFixed(2)}'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.remove, color: Colors.red),
+                      onPressed: () => _showAddEntryModal(
+                          customer: customer, isCredit: false),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.add, color: Colors.green),
+                      onPressed: () =>
+                          _showAddEntryModal(customer: customer, isCredit: true),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete, color: Colors.grey),
+                      onPressed: () => _deleteCustomer(customer),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddEntryModal(),
+        child: Icon(Icons.person_add),
+        tooltip: 'Add New Customer',
+      ),
+    );
+  }
+}
